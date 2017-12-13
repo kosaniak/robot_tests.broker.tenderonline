@@ -1,150 +1,83 @@
- #!/usr/bin/python
- # -*- coding: utf-8 -*-
-
-from datetime import datetime, timedelta
-from iso8601 import parse_date
-from pytz import timezone
+# -*- coding: utf-8 -*-
+import pytz
+import dateutil.parser
 import urllib
-import json
-import os
 
-def convert_time(date):
-    date = datetime.strptime(date, "%d/%m/%Y %H:%M:%S")
-    return timezone('Europe/Kiev').localize(date).strftime('%Y-%m-%dT%H:%M:%S.%f%z')
+from datetime import datetime
+from robot.libraries.BuiltIn import BuiltIn
 
+def get_webdriver():
+    se2lib = BuiltIn().get_library_instance('Selenium2Library')
+    return se2lib._current_browser()
 
-def subtract_min_from_date(date, minutes):
-    date_obj = datetime.strptime(date.split("+")[0], '%Y-%m-%dT%H:%M:%S.%f')
-    return "{}+{}".format(date_obj - timedelta(minutes=minutes), date.split("+")[1])
+def is_checked(locator):
+    driver = get_webdriver()
+    return driver.find_element_by_id(locator).is_selected()
 
+def get_str(value):
+    return str(value)
 
-def convert_datetime_to_tenderonline_format(isodate):
-    iso_dt = parse_date(isodate)
-    day_string = iso_dt.strftime("%d/%m/%Y %H:%M")
-    return day_string
+def get_budget(initial_tender_data):
+    return str(initial_tender_data.data.value.amount)
 
+def get_step_rate(initial_tender_data):
+    return str(initial_tender_data.data.minimalStep.amount)
 
-def get_contract_period():
-    now = datetime.now()
-    cp_start_date = (now + timedelta(days=7)).strftime("%d/%m/%Y %H:%M:%S")
-    cp_end_date = (now + timedelta(days=10)).strftime("%d/%m/%Y %H:%M:%S")
-    return cp_start_date, cp_end_date
+def get_quantity(item):
+    return str(item.quantity)
 
+def get_tenderAttempts(item):
+    return str(item.tenderAttempts)
 
-def convert_string_from_dict_tenderonline(string):
-    return {
-        u"грн.": u"UAH",
-        u"True": u"1",
-        u"False": u"0",
-        u"Відкриті торги": u"aboveThresholdUA",
-        u"Відкриті торги з публікацією англ. мовою": u"aboveThresholdEU",
-        u'Код ДК 021-2015 (CPV)': u'CPV',
-        u'Код ДК (ДК003)': u'ДК003',
-        u'Код ДК (ДК018)': u'ДК018',
-        u'з урахуванням ПДВ': True,
-        u'з ПДВ': True,
-        u'без урахуванням ПДВ': False,
-        u'Очiкування пропозицiй': u'active.tendering',
-        u'Перiод уточнень': u'active.enquiries',
-        u'Аукцiон': u'active.auction',
-        u'Прекваліфікація': u'active.pre-qualification',
-        u'Оскарження прекваліфікації': u'active.pre-qualification.stand-still',
-        u'вимога': u'claim',
-        u'дано відповідь': u'answered',
-        u'вирішено': u'resolved',
-        u'Так': True,
-        u'Ні': False,
-        u'на розглядi': u'pending',
-        u'На розгляді': u'pending',
-        u'не вирішено(обробляється)': u'pending',
-        u'відмінено': u'cancelled',
-        u'відмінена': u'cancelled',
-        u'Переможець': u'active',
-    }.get(string, string)
+def get_tender_dates(initial_tender_data, key):
+    data_period = initial_tender_data.data.auctionPeriod
+    start_dt = dateutil.parser.parse(data_period['startDate'])
+    data = {
+        'StartDate': start_dt.strftime("%d.%m.%Y"),
+        'StartTime': start_dt.strftime("%H:%M"),
+    }
+    return data.get(key, '')
 
+def convert_ISO_DMY(isodate):
+    return dateutil.parser.parse(isodate).strftime("%d.%m.%Y")
 
-def adapt_procuringEntity(role_name, tender_data):
-    if role_name == 'tender_owner':
-        tender_data['data']['procuringEntity']['name'] = u"Михайленко Михайло Михайлович"
-        tender_data['data']['procuringEntity']['address']['postalCode'] = u"01000"
-        tender_data['data']['procuringEntity']['address']['region'] = u"Київська область"
-        tender_data['data']['procuringEntity']['address']['locality'] = u"місто Щасливе"
-        tender_data['data']['procuringEntity']['address']['streetAddress'] = u"вул. Неназвана"
-        tender_data['data']['procuringEntity']['identifier']['legalName'] = u"Михайленко Михайло Михайлович"
-        tender_data['data']['procuringEntity']['identifier']['id'] = u"1234567890"
-        if tender_data['data'].has_key('procurementMethodType'):
-            if "above" in tender_data['data']['procurementMethodType']:
-                tender_data['data']['tenderPeriod']['startDate'] = subtract_min_from_date(tender_data['data']['tenderPeriod']['startDate'], 1)
-    return tender_data
+def convert_date(isodate):
+    return datetime.strptime(isodate, '%d.%m.%Y').date().isoformat()
 
+def convert_date_to_iso(v_date, v_time):
+    full_value = v_date+" "+v_time
+    date_obj = datetime.strptime(full_value, "%d.%m.%Y %H:%M")
+    time_zone = pytz.timezone('Europe/Kiev')
+    localized_date = time_zone.localize(date_obj)
+    return localized_date.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
 
-def adapt_delivery_data(tender_data):
-    for index in range(len(tender_data['data']['items'])):
-        value = tender_data['data']['items'][index]['deliveryAddress']['region']
-        if value == u"місто Київ":
-            tender_data['data']['items'][index]['deliveryAddress']['region'] = u"Київ"
-    return tender_data
+def convert_date_time_to_iso(v_date_time):
+    date_obj = datetime.strptime(v_date_time, "%d.%m.%Y %H:%M")
+    time_zone = pytz.timezone('Europe/Kiev')
+    localized_date = time_zone.localize(date_obj)
+    return localized_date.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
 
+def is_qualified(tender_data):
+    if 'qualified' in tender_data['data']:
+        return  tender_data['data']['qualified']
+    return False
 
-def adapt_view_data(value, field_name):
-    if 'value.amount' in field_name:
-        value = float(value.split(' ')[0])
-    elif 'currency' in field_name:
-        value = value.split(' ')[1]
-    elif 'valueAddedTaxIncluded' in field_name:
-        value = ' '.join(value.split(' ')[2:])
-    elif 'minimalStep.amount' in field_name:
-        value = float(value.split(' ')[0])
-    elif 'unit.name' in field_name:
-        value = value.split(' ')[1]
-    elif 'quantity' in field_name:
-        value = float(value.split(' ')[0])
-    elif 'questions' in field_name and '.date' in field_name:
-        value = convert_time(value.split(' - ')[0])
-    elif 'Date' in field_name:
-        value = convert_time(value)
- #   elif 'deliveryAddress' in field_name:
- #       value = value.replace(" область", "")
-    return convert_string_from_dict_tenderonline(value)
+def is_eligible(tender_data):
+    if 'eligible' in tender_data['data']:
+        return  tender_data['data']['eligible']
+    return False
 
-
-def adapt_view_item_data(value, field_name):
-    if 'unit.name' in field_name:
-        value = ' '.join(value.split(' ')[1:])
-    elif 'quantity' in field_name:
-        value = float(value.split(' ')[0])
-    elif 'Date' in field_name:
-        value = convert_time(value)
-    return convert_string_from_dict_tenderonline(value)
-
-
-def get_related_elem_description(tender_data, feature, item_id):
-    if item_id == "":
-        for elem in tender_data['data']['{}s'.format(feature['featureOf'])]:
-            if feature['relatedItem'] == elem['id']:
-                return elem['description']
-    else: return item_id
-
-
-def custom_download_file(url, file_name, output_dir):
+def download_file(url, file_name, output_dir):
     urllib.urlretrieve(url, ('{}/{}'.format(output_dir, file_name)))
 
+def inc(value):
+    return int(value) + 1
 
-def add_second_sign_after_point(amount):
-    amount = str(repr(amount))
-    if '.' in amount and len(amount.split('.')[1]) == 1:
-        amount += '0'
-    return amount
+def get_minNumberOfQualifiedBids(item):
+    return str(item.minNumberOfQualifiedBids)
 
-
-def get_bid_phone(internal_id, bid_index):
-    r = urllib.urlopen('https://lb.api-sandbox.openprocurement.org/api/2.3/tenders/{}'.format(internal_id)).read()
-    tender = json.loads(r)
-    bid_id = tender['data']['qualifications'][int(bid_index)]["bidID"]
-    for bid in tender['data']['bids']:
-        if bid['id'] == bid_id:
-            return bid['tenderers'][0]['contactPoint']['telephone']
-
-
-def get_upload_file_path():
-    return os.path.join(os.getcwd(), 'src/robot_tests.broker.tenderonline/testFileForUpload.txt')
+def convert_DMY_ISO(v_date):
+    time_zone = pytz.timezone('Europe/Kiev')
+    d_date = datetime.strptime(v_date, '%d.%m.%Y')
+    localized_date = time_zone.localize(d_date)
+    return localized_date.isoformat()
